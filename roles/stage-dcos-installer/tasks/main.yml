@@ -1,0 +1,11 @@
+- name: create /tmp/dcos
+  file:
+    path: /tmp/dcos
+    state: directory
+    mode: 0755
+
+- name: download dcos_install.sh from bootstrap node
+  get_url:
+    url: http://bootstrap.illume:12345/dcos_install.sh
+    dest: /tmp/dcos/dcos_install.sh
+    mode: "u=rwx,g=rx,o=rx"

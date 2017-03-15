@@ -1,0 +1,54 @@
+- name: copy dcos_generate_config.sh to bootstrap node
+  copy:
+    src: ../files/dcos_generate_config.sh
+    dest: /home/ckopper/dcos_generate_config.sh
+    owner: ckopper
+    group: ckopper
+    mode: "u=rwx,g=rx,o=rx"
+    force: yes
+    backup: yes
+
+- name: make sure /home/ckopper/genconf/ exists
+  file:
+    path: /home/ckopper/genconf
+    state: directory
+    mode: 0755
+
+- name: copy config.yaml to genconf/
+  copy:
+    src: ../files/config.yaml
+    dest: /home/ckopper/genconf/config.yaml
+    owner: ckopper
+    group: ckopper
+    mode: "u=rw,g=r,o=r"
+    force: yes
+    backup: yes
+
+- name: copy ip-detect to genconf/
+  copy:
+    src: ../files/ip-detect
+    dest: /home/ckopper/genconf/ip-detect
+    owner: ckopper
+    group: ckopper
+    mode: "u=rwx,g=rx,o=rx"
+    force: yes
+    backup: yes
+
+- name: run dcos_generate_config.sh in order to generate dcos config and load install images into docker
+  shell: /home/ckopper/dcos_generate_config.sh
+  args:
+    chdir: /home/ckopper
+  become: true
+
+- name: start nginx to serve dcos install image
+  docker_container:
+    name: dcos_config_nginx
+    image: nginx
+    detach: true
+    state: started
+    restart: yes
+    ports:
+      - "12345:80"
+    volumes:
+      - "/home/ckopper/genconf/serve:/usr/share/nginx/html:ro"
+  become: true

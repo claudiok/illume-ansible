@@ -1,0 +1,15 @@
+[Unit]
+Description=Set nvidia clocks to maximum
+After=nvidia-persistenced.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/nvidia-smi -ac 5005,1911
+ExecStartPost=/bin/nvidia-smi -pl 300
+RemainAfterExit=true
+ExecStop=/bin/nvidia-smi -rac
+StandardOutput=journal
+
+[Install]
+WantedBy=multi-user.target
+

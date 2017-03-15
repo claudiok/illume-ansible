@@ -1,0 +1,20 @@
+---
+- hosts: all
+  roles:
+    - common
+
+- hosts: agents
+  roles:
+    - cuda
+
+- hosts: pubagents
+  roles:
+    - cuda
+
+- hosts: masters
+  roles:
+    - cuda
+
+- hosts: bootstrap
+  roles:
+    - haproxy

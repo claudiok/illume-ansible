@@ -1,0 +1,20 @@
+[agents]
+agent[01:12].illume ansible_connection=ssh ansible_user=ckopper
+
+[pubagents]
+pubagent01.illume ansible_connection=ssh ansible_user=ckopper
+
+[masters]
+master[01:03].illume ansible_connection=ssh ansible_user=ckopper
+
+[all_agents:children]
+agents
+pubagents
+
+[masters_and_agents:children]
+agents
+pubagents
+masters
+
+[bootstrap]
+bootstrap.illume ansible_connection=ssh ansible_user=ckopper

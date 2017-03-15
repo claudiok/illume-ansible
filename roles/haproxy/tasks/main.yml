@@ -1,0 +1,29 @@
+- name: install haproxy
+  yum:
+    name: haproxy
+    state: latest
+  become: true
+  notify: restart haproxy
+
+- name: install haproxy.cfg
+  copy:
+    src: ../files/haproxy.cfg
+    dest: /etc/haproxy/haproxy.cfg
+    owner: root
+    group: root
+    mode: "u=rw,g=r,o=r"
+    force: yes
+    backup: yes
+  become: true
+  notify:
+    - restart haproxy
+
+- meta: flush_handlers
+
+- name: enable haproxy to start at system start and start it now
+  systemd:
+    name: haproxy
+    daemon_reload: yes
+    state: started
+    enabled: yes
+  become: true

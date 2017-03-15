@@ -1,0 +1,9 @@
+---
+- hosts: bootstrap
+  roles:
+    - dcos-bootstrap-node
+
+- hosts: masters_and_agents
+  roles:
+    - stage-dcos-installer
+

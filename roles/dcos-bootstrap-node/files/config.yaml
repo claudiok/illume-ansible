@@ -1,0 +1,22 @@
+---
+bootstrap_url: http://192.168.101.10:12345
+cluster_name: 'illume'
+exhibitor_storage_backend: static
+ip_detect_filename: /genconf/ip-detect
+master_discovery: static
+master_list:
+- 192.168.101.101
+- 192.168.101.102
+- 192.168.101.103
+resolvers:
+- 192.168.101.1
+use_proxy: 'false'
+dcos_overlay_network:
+    vtep_subnet: 44.128.0.0/20
+    vtep_mac_oui: 70:B3:D5:00:00:00
+    overlays:
+      - name: dcos
+        subnet: 9.0.0.0/8
+        prefix: 26
+process_timeout: 600
+telemetry_enabled: 'false'

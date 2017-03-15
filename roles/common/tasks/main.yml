@@ -1,0 +1,256 @@
+- name: Disallow root SSH access
+  lineinfile:
+    dest=/etc/ssh/sshd_config
+    regexp="^PermitRootLogin"
+    line="PermitRootLogin no"
+    state=present
+  become: true
+  notify:
+    - restart sshd
+
+- name: Disallow SSH password authentication
+  lineinfile:
+    dest=/etc/ssh/sshd_config
+    regexp="^PasswordAuthentication"
+    line="PasswordAuthentication no"
+    state=present
+  become: true
+  notify:
+    - restart sshd
+
+- name: Disallow SSH GSS API authentication
+  lineinfile:
+    dest=/etc/ssh/sshd_config
+    regexp="^GSSAPIAuthentication"
+    line="GSSAPIAuthentication no"
+    state=present
+  become: true
+  notify:
+    - restart sshd
+
+- name: Make sure /etc/locale.conf exists
+  copy:
+    content: ""
+    dest: /etc/locale.conf
+    force: no
+    group: root
+    owner: root
+    mode: 0555
+  become: true
+
+- name: Make sure LANG is set to en_US.UTF-8 in locale.conf
+  lineinfile:
+    dest=/etc/locale.conf
+    regexp="^LANG="
+    line="LANG=en_US.UTF-8"
+    state=present
+  become: true
+
+- name: Make sure LC_ALL is set to en_US.UTF-8 in locale.conf
+  lineinfile:
+    dest=/etc/locale.conf
+    regexp="^LC_ALL="
+    line="LC_ALL=en_US.UTF-8"
+    state=present
+  become: true
+
+- name: Make sure LC_ALL is set to en_US.UTF-8 in /etc/environment
+  lineinfile:
+    dest=/etc/environment
+    regexp="^LC_ALL="
+    line="LC_ALL=en_US.UTF-8"
+    state=present
+  become: true
+
+- name: Make sure the overlay module gets loaded by the kernel
+  lineinfile:
+    dest=/etc/modules-load.d/overlay.conf
+    regexp="^overlay"
+    line="overlay"
+  become: true
+  notify:
+    - rebuild initrd
+    - reboot host and wait
+
+- name: Blacklist the nouveau kernel module
+  kernel_blacklist:
+    name: nouveau
+    blacklist_file: /etc/modprobe.d/blacklist.conf
+    state: present
+  become: true
+  notify:
+    - rebuild initrd
+    - reboot host and wait
+
+- meta: flush_handlers
+
+- name: make sure the overlay kernel module is loaded
+  modprobe:
+    name: overlay
+    state: present
+  become: true
+  when: not (ansible_virtualization_role == "guest" and ansible_virtualization_type == "lxc")
+
+- name: make sure the nouveau kernel module is *not* loaded
+  modprobe:
+    name: nouveau
+    state: absent
+  become: true
+  when: not (ansible_virtualization_role == "guest" and ansible_virtualization_type == "lxc")
+
+- name: upgrade kernel
+  yum:
+    name: kernel,kernel-devel,kernel-tools,kernel-headers,kernel-tools-libs
+    state: latest
+    update_cache: yes
+  become: true
+  when: not (ansible_virtualization_role == "guest" and ansible_virtualization_type == "lxc")
+  notify:
+    - reboot host and wait
+
+- name: upgrade all packages using yum
+  yum:
+    name: '*'
+    state: latest
+    update_cache: yes
+  become: true
+
+- name: install nano,net-tools,yum-utils,epel-release
+  yum:
+    name: nano,net-tools,yum-utils,epel-release
+    state: latest
+  become: true
+
+- name: install dkms
+  yum:
+    name: dkms
+    state: latest
+  become: true
+
+- name: install Development Tools package group
+  yum:
+    name: "@Development Tools"
+    state: latest
+  become: true
+
+- name: check if we should reboot the system
+  stat:
+    path: /var/run/reboot-required
+    get_md5: no
+  register: rebootfile
+  become: true
+
+- name: trigger reboot if previous check succeeded
+  command: /bin/true
+  when: rebootfile.stat.exists == true
+  notify:
+    - reboot host and wait
+
+- meta: flush_handlers
+
+- name: make sure /etc/systemd/system/docker.service.d/ exists
+  file:
+    path: /etc/systemd/system/docker.service.d
+    state: directory
+    mode: 0755
+  become: true
+
+- name: configure systemd/docker override so that the overlay driver is used
+  copy:
+    src: ../files/systemd-docker-override.conf
+    dest: /etc/systemd/system/docker.service.d/override.conf
+    owner: root
+    group: root
+    mode: "u=rw,g=r,o=r"
+    force: yes
+    backup: yes
+  become: true
+  notify:
+    - restart docker
+  when: not (ansible_virtualization_role == "guest" and ansible_virtualization_type == "lxc")
+
+- name: enable the docker CentOS yum repo
+  command: yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+  args:
+    creates: /etc/yum.repos.d/docker-ce.repo
+  become: true
+
+- name: install docker-ce-17.03.0.ce
+  yum:
+    name: docker-ce-17.03.0.ce
+    state: latest
+  become: true
+  notify:
+    - restart docker
+
+- meta: flush_handlers
+
+- name: enable docker to start at system start and start it now
+  systemd:
+    name: docker
+    daemon_reload: yes
+    state: started
+    enabled: yes
+  become: true
+
+- name: figure out if firewalld service exists
+  shell: systemctl status firewalld
+  register: _svc_firewalld
+  failed_when: false
+  changed_when: false
+  ignore_errors: true
+
+- name: disable and stop firewalld
+  systemd:
+    name: firewalld
+    state: stopped
+    enabled: no
+  become: true
+  when: "_svc_firewalld.rc != 4"
+
+- name: set SELinux to permissive mode
+  selinux:
+    policy: targeted
+    state: permissive
+  become: true
+  when: not (ansible_virtualization_role == "guest" and ansible_virtualization_type == "lxc")
+  notify:
+    - reboot host and wait
+
+- name: add the nogroup group
+  group:
+    name: nogroup
+    state: present
+  become: true
+
+- name: install tar,xz,unzip,curl,ipset,bind-utils,bridge-utils,tcpdump packages
+  yum:
+    name: tar,xz,unzip,curl,ipset,bind-utils,bridge-utils,tcpdump
+    state: latest
+  become: true
+
+- name: install python-docker-py package
+  yum:
+    name: python-docker-py
+    state: latest
+  become: true
+
+- name: pull the nginx docker container
+  docker_image:
+    name: nginx
+  become: true      
+
+- name: check if we should reboot the system
+  stat:
+    path: /var/run/reboot-required
+    get_md5: no
+  register: rebootfile
+  become: true
+                          
+- name: trigger reboot if previous check succeeded
+  command: /bin/true
+  when: rebootfile.stat.exists == true
+  notify:
+    - reboot host and wait
+
+- meta: flush_handlers

@@ -1,0 +1,220 @@
+- name: install the cuda repo rpm
+  yum:
+    name: http://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-repo-rhel7-8.0.61-1.x86_64.rpm
+    state: present
+  become: true
+
+- name: install CUDA
+  yum:
+    name: cuda
+    update_cache: yes
+    state: latest
+  become: true
+  notify:
+    - reboot host and wait
+
+- name: install the CUDA profile.d file
+  copy:
+    src: ../files/etc-profile.d-cuda.sh
+    dest: /etc/profile.d/cuda.sh
+    owner: root
+    group: root
+    mode: "u=rw,g=r,o=r"
+    backup: yes
+    force: yes
+  become: true
+
+- name: install /etc/udev/rules.d/99-nvidia.rules
+  copy:
+    src: ../files/udev-99-nvidia.rules
+    dest: /etc/udev/rules.d/99-nvidia.rules
+    owner: root
+    group: root
+    mode: "u=rw,g=r,o=r"
+    force: yes
+  become: true
+  notify:
+    - reload udev rules
+    - reboot host and wait
+
+- name: check if we can load the nvidia-uvm kernel module
+  command: /sbin/modprobe nvidia-uvm
+  register: _modprobe_nvidia_uvm
+  failed_when: false
+  changed_when: false
+  ignore_errors: true
+  become: true
+
+- name: remove /etc/ld.so.conf.d/nvidia-lib64.conf when no GPUs exist
+  file:
+    state: absent
+    path: /etc/ld.so.conf.d/nvidia-lib64.conf 
+  become: true
+  notify:
+    - trigger ldconfig
+  when: "_modprobe_nvidia_uvm.rc != 0"
+
+- name: create /etc/ld.so.conf.d/nvidia-lib64.conf because GPUs exist
+  copy:
+    content: "/usr/lib64/nvidia"
+    dest: /etc/ld.so.conf.d/nvidia-lib64.conf
+    mode: "u=rw,g=r,o=r"
+    owner: root
+    group: root
+    force: yes
+  become: true
+  notify:
+    - trigger ldconfig
+  when: "_modprobe_nvidia_uvm.rc == 0"
+
+- name: make sure /etc/modules-load.d/nvidia.conf exists
+  copy:
+    content: ""
+    dest: /etc/modules-load.d/nvidia.conf
+    force: no
+    group: root
+    owner: root
+    mode: 0555
+  become: true
+  when: "_modprobe_nvidia_uvm.rc == 0"
+
+- name: make sure /etc/modules-load.d/nvidia-uvm.conf exists
+  copy:
+    content: ""
+    dest: /etc/modules-load.d/nvidia-uvm.conf
+    force: no
+    group: root
+    owner: root
+    mode: 0555
+  become: true
+  when: "_modprobe_nvidia_uvm.rc == 0"
+
+- name: Make sure the nvidia modules get loaded by the kernel
+  lineinfile:
+    dest=/etc/modules-load.d/nvidia.conf
+    regexp="^nvidia"
+    line="nvidia"
+  become: true
+  notify:
+    - rebuild initrd
+    - reboot host and wait
+  when: "_modprobe_nvidia_uvm.rc == 0"
+
+- name: Make sure the nvidia-uvm modules get loaded by the kernel
+  lineinfile:
+    dest=/etc/modules-load.d/nvidia-uvm.conf
+    regexp="^nvidia-uvm"
+    line="nvidia-uvm"
+  become: true
+  notify:
+    - rebuild initrd
+    - reboot host and wait
+  when: "_modprobe_nvidia_uvm.rc == 0"
+
+- name: Set the nvidia kernel module options
+  copy:
+    src: ../files/modprobe.d-nvidia.conf
+    dest: /etc/modprobe.d/nvidia.conf
+    owner: root
+    group: root
+    mode: "u=rw,g=r,o=r"
+    force: yes
+  become: true
+  notify:
+    - rebuild initrd
+    - reboot host and wait
+  when: "_modprobe_nvidia_uvm.rc == 0"
+
+- name: make sure /etc/systemd/system/nvidia-smi-clocks.service exists
+  copy:
+    src: ../files/nvidia-smi-clocks.service
+    dest: /etc/systemd/system/nvidia-smi-clocks.service
+    owner: root
+    group: root
+    mode: "u=rw,g=r,o=r"
+    force: yes
+  become: true
+  when: "_modprobe_nvidia_uvm.rc == 0"
+
+- name: enable and start the nvidia-persistenced.service
+  systemd:
+    name: nvidia-persistenced
+    daemon_reload: yes
+    state: started
+    enabled: yes
+  become: true
+  when: "_modprobe_nvidia_uvm.rc == 0"
+  
+- name: enable and start the nvidia-smi-clocks.service
+  systemd:
+    name: nvidia-smi-clocks
+    daemon_reload: yes
+    state: restarted
+    enabled: yes
+  become: true
+  when: "_modprobe_nvidia_uvm.rc == 0"
+
+- name: install set-gpu-fans scripts
+  copy:
+    src: ../files/set-gpu-fans/
+    dest: /opt/set-gpu-fans/
+    owner: root
+    group: root
+    force: yes
+  become: true
+  when: "_modprobe_nvidia_uvm.rc == 0"
+
+- name: make set-gpu-fans/nvscmd scripts executable
+  file:
+    path: /opt/set-gpu-fans/nvscmd
+    mode: "u=rwx,g=rx,o=rx"
+  become: true
+  when: "_modprobe_nvidia_uvm.rc == 0"
+
+- name: make set-gpu-fans/cool_gpu scripts executable
+  file:
+    path: /opt/set-gpu-fans/cool_gpu
+    mode: "u=rwx,g=rx,o=rx"
+  become: true
+  when: "_modprobe_nvidia_uvm.rc == 0"
+
+- name: install xorg-x11-server-common, xorg-x11-xinit and xorg-x11-server-Xorg packages
+  yum:
+    name: xorg-x11-server-common,xorg-x11-xinit,xorg-x11-server-Xorg
+    state: latest
+  become: true
+  when: "_modprobe_nvidia_uvm.rc == 0"
+
+- name: install set-gpu-fans.service systemd service
+  copy:
+    src: ../files/set-gpu-fans.service
+    dest: /etc/systemd/system/set-gpu-fans.service
+    owner: root
+    group: root
+    mode: "u=rw,g=r,o=r"
+    force: true
+  become: true
+  when: "_modprobe_nvidia_uvm.rc == 0"
+
+- name: enable and start the set-gpu-fans.service
+  systemd:
+    name: set-gpu-fans
+    daemon_reload: true
+    state: restarted
+    enabled: yes
+  become: true
+  when: "_modprobe_nvidia_uvm.rc == 0"  
+
+- name: check if we should reboot the system
+  stat:
+    path: /var/run/reboot-required
+    get_md5: no
+  register: rebootfile
+  become: true
+                          
+- name: trigger reboot if previous check succeeded
+  command: /bin/true
+  when: rebootfile.stat.exists == true
+  notify:
+    - reboot host and wait
+

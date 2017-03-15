@@ -1,0 +1,23 @@
+- name: trigger ldconfig
+  command: /sbin/ldconfig
+  become: true
+    
+- name: rebuild initrd
+  command: /usr/bin/dracut -f
+  become: true
+
+- name: reload udev rules
+  command: /sbin/udevadm control --reload-rules
+  become: true
+
+- name: reboot host
+  command: /usr/bin/systemd-run --on-active=10 /usr/bin/systemctl reboot
+  async: 0
+  poll: 0
+  listen: "reboot host and wait"
+  become: true
+
+- name: wait for host sshd
+  local_action: wait_for host="{{ inventory_hostname }}" search_regex=OpenSSH port=22 timeout=600 delay=60
+  listen: "reboot host and wait"
+
