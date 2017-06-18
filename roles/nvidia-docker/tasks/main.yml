@@ -1,0 +1,22 @@
+- name: install the nvidia-docker rpm
+  yum:
+    name: https://github.com/NVIDIA/nvidia-docker/releases/download/v1.0.1/nvidia-docker-1.0.1-1.x86_64.rpm
+    state: present
+  become: true
+
+- name: check if we can load the nvidia-uvm kernel module
+  command: /sbin/modprobe nvidia-uvm
+  register: _modprobe_nvidia_uvm
+  failed_when: false
+  changed_when: false
+  ignore_errors: true
+  become: true
+
+- name: enable and start nvidia-docker.service
+  systemd:
+    name: nvidia-docker.service
+    daemon_reload: yes
+    state: started
+    enabled: yes
+  become: true
+  when: "_modprobe_nvidia_uvm.rc == 0"
